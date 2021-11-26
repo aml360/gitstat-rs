@@ -2,8 +2,8 @@
 mod json_structs;
 
 //--------Uses--------//
-use git2::Error;
 use git2::{Commit, Repository};
+use git2::{Error, Oid};
 use json_structs as models;
 use std::collections::HashMap;
 
@@ -20,21 +20,23 @@ fn run() -> Result<(), Error> {
     };
     let mut signatures: HashMap<String, models::Signature> = HashMap::new();
 
-    for oid in &mut revwalk {
+    let mut commits: Vec<Commit> = Vec::new();
+    for oid in revwalk {
         let oid = oid?;
-        let commit = repo.find_commit(oid)?;
+        commits.push(repo.find_commit(oid)?);
+    }
+    // Freezing
+    let commits = commits;
+
+    for commit in &commits {
         let author = commit.author();
         let author_str = author.to_string();
-        let committer = commit.committer();
-        let committer_str = committer.to_string();
-
-        let signature_contains_author = !signatures.contains_key(&author_str);
-        let signature_contains_commiter = !signatures.contains_key(&committer_str);
-
+        let committer_str = commit.committer().to_string();
+        let signature_contains_author = signatures.contains_key(&author_str);
+        let signature_contains_commiter = signatures.contains_key(&committer_str);
         //TODO: Fix mutable reference error.
-        let hmref = &mut signatures;
         let mut insert_closure = || {
-            hmref.insert(
+            signatures.insert(
                 author_str.clone(),
                 models::Signature {
                     // TODO: Pass value to closure that implements name and email methods (author and committer)
@@ -45,17 +47,18 @@ fn run() -> Result<(), Error> {
                 },
             );
         };
-
-        if signature_contains_author {
+        if !signature_contains_author {
             insert_closure()
         }
 
-        if signature_contains_commiter {
+        if !signature_contains_commiter {
             insert_closure()
         }
+    }
 
-        // TODO: Solve reference problems, fails because hashmap is mutable, the method get returns a reference,
-        // in the next iteration because hm is mutable the data pointed by the reference could be invalidated if we remove that data
+    for commit in &commits {
+        let author_str = commit.author().to_string();
+        let committer_str = commit.committer().to_string();
 
         let auth_hm = signatures.get(&author_str).unwrap();
         let committer_hm = signatures.get(&committer_str).unwrap();
@@ -72,28 +75,13 @@ fn run() -> Result<(), Error> {
             },
             message: String::from(commit.message().unwrap()),
         });
-        println!("{}", author);
-        print_commit(&commit);
     }
 
-    let amli = models::Signature {
-        name: String::from("Amli"),
-        email: String::from("amli@gmail.com"),
-        time: String::from("dsadsa"),
-    };
-    project.commits.push(models::Commit {
-        author: &amli,
-        isMerge: false,
-        hash: String::from("hashTest"),
-        message: String::from("msg de commit"),
-        files: vec![models::File {}],
-        committer: &amli,
-    });
-    let test_struct = json_structs::Gitstat {
+    let gitstat = models::Gitstat{
         version: String::from("1.0.0"),
         projects: vec![project],
     };
-    println!("{}", serde_json::to_string_pretty(&test_struct).unwrap());
+    println!("{}", serde_json::to_string_pretty(&gitstat).unwrap());
     Ok(())
 }
 
