@@ -23,72 +23,51 @@ fn run() -> Result<(), Error> {
     for oid in &mut revwalk {
         let oid = oid?;
         let commit = repo.find_commit(oid)?;
+
         let author = commit.author();
         let author_str = author.to_string();
         let committer = commit.committer();
         let committer_str = committer.to_string();
 
-        let signature_contains_author = !signatures.contains_key(&author_str);
-        let signature_contains_commiter = !signatures.contains_key(&committer_str);
-
-        //TODO: Fix mutable reference error.
-        let hmref = &mut signatures;
-        let mut insert_closure = || {
-            hmref.insert(
-                author_str.clone(),
+        let signature_contains_author = signatures.contains_key(&author_str);
+        let signature_contains_commiter = signatures.contains_key(&committer_str);
+        let mut insert_closure = |key: String, sign: git2::Signature| {
+            signatures.insert(
+                key,
                 models::Signature {
-                    // TODO: Pass value to closure that implements name and email methods (author and committer)
-                    name: String::from(author.name().unwrap()),
-                    email: String::from(author.email().unwrap()),
+                    name: String::from(sign.name().unwrap()),
+                    email: String::from(sign.email().unwrap()),
+                    // TODO: function that serializes commit time or returns "" if error occurs
                     time: String::from("DateToStringNotImplemented"),
-                    // time: String::from(commit.time()),
                 },
             );
         };
-
-        if signature_contains_author {
-            insert_closure()
+        if !signature_contains_author {
+            insert_closure(author_str.clone(), author);
+        }
+        if !signature_contains_commiter {
+            insert_closure(committer_str.clone(), committer);
         }
 
-        if signature_contains_commiter {
-            insert_closure()
+        let auth_hm = signatures.get(&author_str).unwrap() as *const models::Signature;
+        let committer_hm = signatures.get(&committer_str).unwrap() as *const models::Signature;
+        unsafe {
+            project.commits.push(models::Commit {
+                author: &(*auth_hm),
+                committer: &(*committer_hm),
+                hash: commit.id().to_string(),
+                // TODO: Obtain files with functional rust or for loop that returns
+                files: vec![],
+                isMerge: if commit.parent_count() > 1 {
+                    true
+                } else {
+                    false
+                },
+                message: String::from(commit.message().unwrap()),
+            });
         }
-
-        // TODO: Solve reference problems, fails because hashmap is mutable, the method get returns a reference,
-        // in the next iteration because hm is mutable the data pointed by the reference could be invalidated if we remove that data
-
-        let auth_hm = signatures.get(&author_str).unwrap();
-        let committer_hm = signatures.get(&committer_str).unwrap();
-
-        project.commits.push(models::Commit {
-            author: auth_hm,
-            committer: committer_hm,
-            hash: commit.id().to_string(),
-            files: vec![],
-            isMerge: if commit.parent_count() > 1 {
-                true
-            } else {
-                false
-            },
-            message: String::from(commit.message().unwrap()),
-        });
-        println!("{}", author);
         print_commit(&commit);
     }
-
-    let amli = models::Signature {
-        name: String::from("Amli"),
-        email: String::from("amli@gmail.com"),
-        time: String::from("dsadsa"),
-    };
-    project.commits.push(models::Commit {
-        author: &amli,
-        isMerge: false,
-        hash: String::from("hashTest"),
-        message: String::from("msg de commit"),
-        files: vec![models::File {}],
-        committer: &amli,
-    });
     let test_struct = json_structs::Gitstat {
         version: String::from("1.0.0"),
         projects: vec![project],
