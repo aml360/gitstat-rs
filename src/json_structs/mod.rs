@@ -1,32 +1,69 @@
-use serde::{Deserialize, Serialize};
+use std::{ops::Deref, rc::Rc};
+
+use serde::{ser::SerializeStruct, Serialize};
 
 #[derive(Serialize)]
-pub struct Gitstat<'a> {
+pub struct Gitstat {
     pub version: String,
-    pub projects: Vec<Project<'a>>,
+    pub projects: Vec<Project>,
 }
 
 #[derive(Serialize)]
-pub struct Project<'a> {
+pub struct Project {
     pub name: String,
-    pub commits: Vec<Commit<'a>>,
+    pub commits: Vec<Commit>,
 }
 
 #[derive(Serialize)]
-pub struct Commit<'a> {
+#[serde(rename_all = "camelCase")]
+pub struct Commit {
     pub hash: String,
-    pub author: &'a Signature,
-    pub committer: &'a Signature,
+    pub author: Signature,
+    pub committer: Signature,
     pub message: String,
     pub files: Vec<File>,
-    pub isMerge: bool,
+    pub is_merge: bool,
+}
+
+pub struct RcUser(pub Rc<User>);
+
+impl Deref for RcUser {
+    type Target = Rc<User>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Clone for RcUser {
+    fn clone(&self) -> Self {
+        Self(Rc::clone(&self.0))
+    }
+}
+
+impl Serialize for RcUser {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut s = serializer.serialize_struct("user", 2)?;
+        s.serialize_field("name", &self.0.name)?;
+        s.serialize_field("email", &self.0.email)?;
+        s.end()
+    }
 }
 
 #[derive(Serialize)]
 pub struct Signature {
+    #[serde(flatten)]
+    pub user: RcUser,
+    pub time: String,
+}
+
+#[derive(Serialize)]
+pub struct User {
     pub name: String,
     pub email: String,
-    pub time: String,
 }
 
 #[derive(Serialize)]
