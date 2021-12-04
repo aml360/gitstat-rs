@@ -67,6 +67,14 @@ pub struct User {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct File {
-    // TODO: Add file properties
+    pub filepath: String,
+    ///Number of file line additions
+    pub additions: u64,
+    ///Number of file line additions
+    pub deletions: i64,
+    pub is_binary: bool,
+    pub raw_deletions: u64,
+    pub raw_additions: i64,
 }
