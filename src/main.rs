@@ -7,6 +7,8 @@ use git2::Error;
 use git2::{Commit, Repository};
 use json_structs as models;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
 use std::rc::Rc;
 
 fn run() -> Result<(), Error> {
@@ -68,13 +70,15 @@ fn run() -> Result<(), Error> {
             },
             message: String::from(commit.message().unwrap()),
         });
-        print_commit(&commit);
+        // print_commit(&commit);
     }
     let test_struct = models::Gitstat {
         version: String::from("1.0.0"),
         projects: vec![project],
     };
-    println!("{}", serde_json::to_string_pretty(&test_struct).unwrap());
+    let json = serde_json::to_string(&test_struct).unwrap();
+    let to_file_result = write_to_file(&json);
+    println!("{}", &json);
     Ok(())
 }
 
@@ -86,6 +90,16 @@ fn get_folder_name(repo: &git2::Repository) -> Option<String> {
             .and_then(|os_str| Some(String::from(os_str)))
     })
 }
+
+fn write_to_file(json_obj: &String) -> Result<(), std::io::Error> {
+    let mut file = File::create(consts::FILE_NAME)?;
+    let result = file.write_all(json_obj.as_bytes());
+    match result {
+        Ok(_) => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
 ///
 fn print_commit(commit: &Commit) {
     println!("commit {}", commit.id());
