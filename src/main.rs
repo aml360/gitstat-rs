@@ -24,14 +24,12 @@ fn run() -> Result<(), Error> {
     for oid in &mut revwalk {
         let oid = oid?;
         let commit = repo.find_commit(oid)?;
+        let (author, committer) = (commit.author(), commit.committer());
+        let (author_str, committer_str) = (author.to_string(), committer.to_string());
 
-        let author = commit.author();
-        let author_str = author.to_string();
-        let committer = commit.committer();
-        let committer_str = committer.to_string();
-
-        let signature_contains_author = signatures.contains_key(&author_str);
-        let signature_contains_commiter = signatures.contains_key(&committer_str);
+        //Check if exist an user in hashmap to not repeat data
+        let is_author_in_hm = signatures.contains_key(&author_str);
+        let is_committer_in_hm = signatures.contains_key(&committer_str);
         let mut insert_closure = |key: String, sign: &git2::Signature| {
             signatures.insert(
                 key,
@@ -41,10 +39,12 @@ fn run() -> Result<(), Error> {
                 }),
             );
         };
-        if !signature_contains_author {
+
+        //If is a new user, insert into hashmap
+        if !is_author_in_hm {
             insert_closure(author_str.clone(), &author);
         }
-        if !signature_contains_commiter {
+        if !is_committer_in_hm {
             insert_closure(committer_str.clone(), &committer);
         }
 
@@ -53,11 +53,11 @@ fn run() -> Result<(), Error> {
         project.commits.push(models::Commit {
             author: models::Signature {
                 user: models::RcUser(Rc::clone(&auth_hm)),
-                time: (&author).when().seconds().to_string(),
+                time: author.when().seconds().to_string(),
             },
             committer: models::Signature {
                 user: models::RcUser(Rc::clone(&committer_hm)),
-                time: (&committer).when().seconds().to_string(),
+                time: committer.when().seconds().to_string(),
             },
             hash: commit.id().to_string(),
             // TODO: Obtain files with functional rust or for loop that returns
@@ -71,7 +71,7 @@ fn run() -> Result<(), Error> {
         });
         print_commit(&commit);
     }
-    let test_struct = json_structs::Gitstat {
+    let test_struct = models::Gitstat {
         version: String::from("1.0.0"),
         projects: vec![project],
     };
