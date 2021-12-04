@@ -61,8 +61,7 @@ fn run() -> Result<(), Error> {
                 time: committer.when().seconds().to_string(),
             },
             hash: commit.id().to_string(),
-            // TODO: Obtain files with functional rust or for loop that returns
-            files: vec![],
+            files: get_commit_files(&repo, &commit),
             is_merge: if commit.parent_count() > 1 {
                 true
             } else {
@@ -80,6 +79,65 @@ fn run() -> Result<(), Error> {
     let to_file_result = write_to_file(&json);
     println!("{}", &json);
     Ok(())
+}
+
+fn get_commit_files(repo: &Repository, commit: &Commit) -> Vec<models::File> {
+    let mut files_stats: Vec<models::File> = vec![];
+    //If parent commit has a tree
+    if let Some(parent_tree) = commit
+        .parent(0)
+        .ok()
+        .and_then(|parent| parent.tree().ok().and_then(|tree| Some(tree)))
+    {
+        let diff = repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit.tree().unwrap()), None);
+        if let Ok(diff) = diff {
+            // --------------- Deltas ---------------
+            for delta in diff.deltas() {
+                let (new_file, old_file) = (delta.new_file(), delta.old_file());
+                let (new_file_id, old_file_id) = (new_file.id(), old_file.id());
+                let (new_file_blob_opt, old_file_blob_opt) =
+                    (repo.find_blob(new_file_id), repo.find_blob(old_file_id));
+
+                let line_stats_from_blobs =
+                    |new_file_blob: &git2::Blob, old_file_blob: &git2::Blob| {
+                        return git2::Patch::from_blobs(
+                            old_file_blob,
+                            None,
+                            new_file_blob,
+                            None,
+                            None,
+                        )
+                        .ok()
+                        .unwrap()
+                        .line_stats()
+                        .unwrap();
+                    };
+
+                match (new_file_blob_opt.ok(), old_file_blob_opt.ok()) {
+                    // File changed
+                    (Some(new_file_blob), Some(old_file_blob)) => {
+                        let line_stats = line_stats_from_blobs(&new_file_blob, &old_file_blob);
+                        files_stats.push(models::File {
+                            filepath: String::from("not implemented actually"),
+                            additions: line_stats.1 as u64,
+                            deletions: line_stats.2 as i64,
+                            is_binary: false,
+                            raw_deletions: line_stats.1 as u64,
+                            raw_additions: line_stats.2 as i64,
+                        })
+                    }
+                    // Deleted file
+                    (None, Some(_)) => {}
+                    // new file created
+                    // Find a way to get line stats from single blob
+                    (Some(_), None) => {}
+                    // This should only happen if the 2 blobs are binary files
+                    (None, None) => {}
+                };
+            }
+        }
+    }
+    files_stats
 }
 
 fn get_folder_name(repo: &git2::Repository) -> Option<String> {
