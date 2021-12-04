@@ -11,13 +11,11 @@ use std::rc::Rc;
 
 fn run() -> Result<(), Error> {
     let repo = Repository::open(".")?;
-    // let branches = repo.branches(None)?;
     let mut revwalk = repo.revwalk()?;
     revwalk.push_head()?;
 
     let mut project = models::Project {
-        // TODO: Get project from repo variable
-        name: String::from("dsadsa"),
+        name: String::from(get_folder_name(&repo).unwrap_or_default()),
         commits: Vec::new(),
     };
     let mut signatures: HashMap<String, Rc<models::User>> = HashMap::new();
@@ -80,6 +78,14 @@ fn run() -> Result<(), Error> {
     Ok(())
 }
 
+fn get_folder_name(repo: &git2::Repository) -> Option<String> {
+    let path_component = repo.path().components().rev().skip(1).next();
+    path_component.and_then(|wat| {
+        wat.as_os_str()
+            .to_str()
+            .and_then(|os_str| Some(String::from(os_str)))
+    })
+}
 ///
 fn print_commit(commit: &Commit) {
     println!("commit {}", commit.id());
