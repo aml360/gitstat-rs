@@ -1,4 +1,5 @@
 //--------Modules--------//
+mod consts;
 mod json_structs;
 
 //--------Uses--------//
