@@ -56,11 +56,11 @@ fn run() -> Result<(), Error> {
         project.commits.push(models::Commit {
             author: models::Signature {
                 user: models::RcUser(Rc::clone(&auth_hm)),
-                time: author.when().seconds().to_string(),
+                time: seconds_to_unix_time(author.when().seconds()),
             },
             committer: models::Signature {
                 user: models::RcUser(Rc::clone(&committer_hm)),
-                time: committer.when().seconds().to_string(),
+                time: seconds_to_unix_time(author.when().seconds()),
             },
             hash: commit.id().to_string(),
             files: get_commit_files(&repo, &commit),
@@ -81,6 +81,14 @@ fn run() -> Result<(), Error> {
     let _to_file_result = write_to_file(&json);
     // println!("{}", &json);
     Ok(())
+}
+
+fn seconds_to_unix_time(sec: i64) -> String {
+    use chrono::{NaiveDateTime, Utc};
+    
+    let date: chrono::DateTime<Utc> =
+        chrono::DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(sec, 0), Utc);
+    date.to_rfc3339()
 }
 
 fn get_commit_files(repo: &Repository, commit: &Commit) -> Vec<models::File> {
