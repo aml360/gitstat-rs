@@ -1,6 +1,8 @@
 //--------Modules--------//
 mod consts;
 mod json_structs;
+#[cfg(test)]
+mod tests;
 
 //--------Uses--------//
 use git2::Error;
@@ -76,19 +78,15 @@ fn run() -> Result<(), Error> {
         projects: vec![project],
     };
     let json = serde_json::to_string(&test_struct).unwrap();
-    let to_file_result = write_to_file(&json);
-    println!("{}", &json);
+    let _to_file_result = write_to_file(&json);
+    // println!("{}", &json);
     Ok(())
 }
 
 fn get_commit_files(repo: &Repository, commit: &Commit) -> Vec<models::File> {
     let mut files_stats: Vec<models::File> = vec![];
     //If parent commit has a tree
-    if let Some(parent_tree) = commit
-        .parent(0)
-        .ok()
-        .and_then(|parent| parent.tree().ok().and_then(|tree| Some(tree)))
-    {
+    if let Some(parent_tree) = commit.parent(0).ok().and_then(|parent| parent.tree().ok()) {
         let diff = repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit.tree().unwrap()), None);
         if let Ok(diff) = diff {
             // --------------- Deltas ---------------
@@ -158,7 +156,8 @@ fn write_to_file(json_obj: &String) -> Result<(), std::io::Error> {
     }
 }
 
-///
+#[allow(dead_code)]
+/// Prints a commit in stdout
 fn print_commit(commit: &Commit) {
     println!("commit {}", commit.id());
 
@@ -184,6 +183,16 @@ fn main() {
     // let args = Args::from_args();
     match run() {
         Ok(()) => {}
-        Err(err) => println!("{}", err),
+        Err(err) => match err.class() {
+            git2::ErrorClass::Repository => match err.code() {
+                git2::ErrorCode::NotFound => {
+                    println!("Repository not found");
+                    println!("{}", err)
+                }
+                _ => {}
+            },
+
+            _ => println!("{}", err),
+        },
     };
 }
