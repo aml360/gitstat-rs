@@ -69,7 +69,7 @@ fn run() -> Result<(), Error> {
             } else {
                 false
             },
-            message: String::from(commit.message().unwrap()),
+            message: get_commit_msg(&commit),
         });
         // print_commit(&commit);
     }
@@ -81,6 +81,18 @@ fn run() -> Result<(), Error> {
     let _to_file_result = write_to_file(&json);
     // println!("{}", &json);
     Ok(())
+}
+
+///returns the msg of a commit without trailing \n in unix-like systems and without \n\r in windows ones
+fn get_commit_msg(commit: &Commit) -> String {
+    let mut msg = String::from(commit.message().unwrap_or_default());
+    if msg.ends_with('\n') {
+        msg.pop();
+        if msg.ends_with('\r') {
+            msg.pop();
+        }
+    }
+    msg
 }
 
 fn seconds_to_unix_time(sec: i64) -> String {
