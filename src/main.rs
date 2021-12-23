@@ -135,8 +135,12 @@ fn get_commit_files(repo: &Repository, commit: &Commit) -> Vec<models::File> {
                     // File changed
                     (Some(new_file_blob), Some(old_file_blob)) => {
                         let line_stats = line_stats_from_blobs(&new_file_blob, &old_file_blob);
+                        let file_path = new_file
+                            .path()
+                            .and_then(|path| Some(String::from(path.to_str().unwrap_or("default"))))
+                            .unwrap_or_default();
                         files_stats.push(models::File {
-                            filepath: String::from("not implemented actually"),
+                            filepath: file_path,
                             additions: line_stats.1 as u64,
                             deletions: line_stats.2 as i64,
                             is_binary: false,
