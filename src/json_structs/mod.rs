@@ -1,4 +1,4 @@
-use std::{ops::Deref, rc::Rc};
+use std::{ops::Deref, sync::Arc};
 
 use serde::{ser::SerializeStruct, Serialize};
 
@@ -25,10 +25,10 @@ pub struct Commit {
     pub is_merge: bool,
 }
 
-pub struct RcUser(pub Rc<User>);
+pub struct RcUser(pub Arc<User>);
 
 impl Deref for RcUser {
-    type Target = Rc<User>;
+    type Target = Arc<User>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -37,7 +37,7 @@ impl Deref for RcUser {
 
 impl Clone for RcUser {
     fn clone(&self) -> Self {
-        Self(Rc::clone(&self.0))
+        Self(Arc::clone(&self.0))
     }
 }
 

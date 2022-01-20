@@ -5,14 +5,29 @@ mod json_structs;
 mod tests;
 
 //--------Uses--------//
-use git2::Error;
 use git2::{Commit, Repository};
+use git2::{Error, Oid};
 use json_structs as models;
+use rayon::prelude::*;
+#[allow(unused_imports)]
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
+
+struct MyRepository(Repository);
+
+impl std::ops::Deref for MyRepository {
+    type Target = Repository;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+unsafe impl Sync for MyRepository {}
 
 fn run() -> Result<(), Error> {
     let repo = Repository::open(".")?;
+
     let mut revwalk = repo.revwalk()?;
     revwalk.push_head()?;
 
@@ -20,57 +35,74 @@ fn run() -> Result<(), Error> {
         name: String::from(get_folder_name(&repo).unwrap_or_default()),
         commits: Vec::new(),
     };
-    let mut signatures: HashMap<String, Rc<models::User>> = HashMap::new();
 
-    for oid in &mut revwalk {
-        let oid = oid?;
-        let commit = repo.find_commit(oid)?;
-        let (author, committer) = (commit.author(), commit.committer());
-        let (author_str, committer_str) = (author.to_string(), committer.to_string());
+    let signatures: Arc<Mutex<HashMap<String, Arc<models::User>>>> =
+        Arc::from(Mutex::from(HashMap::new()));
 
-        //Check if exist an user in hashmap to not repeat data
-        let is_author_in_hm = signatures.contains_key(&author_str);
-        let is_committer_in_hm = signatures.contains_key(&committer_str);
-        let mut insert_closure = |key: String, sign: &git2::Signature| {
-            signatures.insert(
-                key,
-                Rc::new(models::User {
-                    name: String::from(sign.name().unwrap_or_default()),
-                    email: String::from(sign.email().unwrap_or_default()),
-                }),
-            );
-        };
+    let oids: Vec<Oid> = revwalk.into_iter().map(|oid| oid.unwrap()).collect();
 
-        //If is a new user, insert into hashmap
-        if !is_author_in_hm {
-            insert_closure(author_str.clone(), &author);
-        }
-        if !is_committer_in_hm {
-            insert_closure(committer_str.clone(), &committer);
-        }
+    let myrepo = MyRepository(repo);
 
-        let auth_hm = signatures.get(&author_str).unwrap();
-        let committer_hm = signatures.get(&committer_str).unwrap();
-        project.commits.push(models::Commit {
-            author: models::Signature {
-                user: models::RcUser(Rc::clone(&auth_hm)),
-                time: seconds_to_unix_time(author.when().seconds()),
-            },
-            committer: models::Signature {
-                user: models::RcUser(Rc::clone(&committer_hm)),
-                time: seconds_to_unix_time(author.when().seconds()),
-            },
-            hash: commit.id().to_string(),
-            files: get_commit_files(&repo, &commit),
-            is_merge: if commit.parent_count() > 1 {
-                true
-            } else {
-                false
-            },
-            message: get_commit_msg(&commit),
-        });
-        // print_commit(&commit);
-    }
+    let commits = oids
+        .par_iter()
+        .map(|oid| {
+            let commit = myrepo.find_commit(*oid).unwrap();
+            let (author, committer) = (commit.author(), commit.committer());
+            let (author_str, committer_str) = (author.to_string(), committer.to_string());
+
+            //Check if exist an user in hashmap to not repeat data
+            let mut guard = signatures.lock().unwrap();
+            let is_author_in_hm = guard.contains_key(&author_str);
+            let is_committer_in_hm = guard.contains_key(&committer_str);
+            let mut insert_closure = |key: String, sign: &git2::Signature| {
+                guard.insert(
+                    key,
+                    Arc::new(models::User {
+                        name: String::from(sign.name().unwrap_or_default()),
+                        email: String::from(sign.email().unwrap_or_default()),
+                    }),
+                );
+            };
+            //If is a new user, insert into hashmap
+            if !is_author_in_hm {
+                insert_closure(author_str.clone(), &author);
+            }
+            if !is_committer_in_hm {
+                insert_closure(committer_str.clone(), &committer);
+            }
+
+            let (auth_hm, committer_hm) = {
+                (
+                    guard.get(&author_str).unwrap(),
+                    guard.get(&committer_str).unwrap(),
+                )
+            };
+
+            models::Commit {
+                author: models::Signature {
+                    user: models::RcUser(Arc::clone(auth_hm)),
+                    time: seconds_to_unix_time(author.when().seconds()),
+                },
+                committer: models::Signature {
+                    user: models::RcUser(Arc::clone(committer_hm)),
+                    time: seconds_to_unix_time(author.when().seconds()),
+                },
+                hash: commit.id().to_string(),
+                files: get_commit_files(&myrepo, &commit),
+                is_merge: if commit.parent_count() > 1 {
+                    true
+                } else {
+                    false
+                },
+                message: get_commit_msg(&commit),
+            }
+
+            // project.commits.push();
+        })
+        .collect::<Vec<models::Commit>>();
+
+    project.commits = commits;
+
     let test_struct = models::Gitstat {
         version: String::from("1.0.0"),
         projects: vec![project],
