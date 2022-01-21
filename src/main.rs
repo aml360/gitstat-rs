@@ -9,9 +9,8 @@ use git2::{Commit, Repository};
 use git2::{Error, Oid};
 use json_structs as models;
 use rayon::prelude::*;
-#[allow(unused_imports)]
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock, RwLockWriteGuard};
 
 struct MyRepository(Repository);
 
@@ -25,6 +24,8 @@ impl std::ops::Deref for MyRepository {
 
 unsafe impl Sync for MyRepository {}
 
+type SignaturesHm = HashMap<String, Arc<models::User>>;
+
 fn run() -> Result<(), Error> {
     let repo = Repository::open(".")?;
 
@@ -36,8 +37,7 @@ fn run() -> Result<(), Error> {
         commits: Vec::new(),
     };
 
-    let signatures: Arc<Mutex<HashMap<String, Arc<models::User>>>> =
-        Arc::from(Mutex::from(HashMap::new()));
+    let signatures: Arc<RwLock<SignaturesHm>> = Arc::from(RwLock::from(HashMap::new()));
 
     let oids: Vec<Oid> = revwalk.into_iter().map(|oid| oid.unwrap()).collect();
 
@@ -50,31 +50,40 @@ fn run() -> Result<(), Error> {
             let (author, committer) = (commit.author(), commit.committer());
             let (author_str, committer_str) = (author.to_string(), committer.to_string());
 
+            let insert_closure =
+                |key: String,
+                 sign: &git2::Signature,
+                 mut rwlock: RwLockWriteGuard<SignaturesHm>| {
+                    rwlock.insert(
+                        key,
+                        Arc::new(models::User {
+                            name: String::from(sign.name().unwrap_or_default()),
+                            email: String::from(sign.email().unwrap_or_default()),
+                        }),
+                    );
+                };
             //Check if exist an user in hashmap to not repeat data
-            let mut guard = signatures.lock().unwrap();
-            let is_author_in_hm = guard.contains_key(&author_str);
-            let is_committer_in_hm = guard.contains_key(&committer_str);
-            let mut insert_closure = |key: String, sign: &git2::Signature| {
-                guard.insert(
-                    key,
-                    Arc::new(models::User {
-                        name: String::from(sign.name().unwrap_or_default()),
-                        email: String::from(sign.email().unwrap_or_default()),
-                    }),
-                );
+            let (is_author_in_hm, is_committer_in_hm) = {
+                let rdlock = signatures.read().unwrap();
+                (
+                    rdlock.contains_key(&author_str),
+                    rdlock.contains_key(&committer_str),
+                )
             };
             //If is a new user, insert into hashmap
             if !is_author_in_hm {
-                insert_closure(author_str.clone(), &author);
+                let rwlock = signatures.write().unwrap();
+                insert_closure(author_str.clone(), &author, rwlock);
             }
             if !is_committer_in_hm {
-                insert_closure(committer_str.clone(), &committer);
+                let rwlock = signatures.write().unwrap();
+                insert_closure(committer_str.clone(), &committer, rwlock);
             }
-
+            let rdlock = signatures.read().unwrap();
             let (auth_hm, committer_hm) = {
                 (
-                    guard.get(&author_str).unwrap(),
-                    guard.get(&committer_str).unwrap(),
+                    rdlock.get(&author_str).unwrap(),
+                    rdlock.get(&committer_str).unwrap(),
                 )
             };
 
@@ -96,8 +105,6 @@ fn run() -> Result<(), Error> {
                 },
                 message: get_commit_msg(&commit),
             }
-
-            // project.commits.push();
         })
         .collect::<Vec<models::Commit>>();
 
