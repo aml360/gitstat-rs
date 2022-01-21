@@ -37,8 +37,8 @@ fn run() -> Result<(), Error> {
             signatures.insert(
                 key,
                 Rc::new(models::User {
-                    name: String::from(sign.name().unwrap()),
-                    email: String::from(sign.email().unwrap()),
+                    name: String::from(sign.name().unwrap_or_default()),
+                    email: String::from(sign.email().unwrap_or_default()),
                 }),
             );
         };
