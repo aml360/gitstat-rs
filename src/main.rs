@@ -9,8 +9,6 @@ use git2::Error;
 use git2::{Commit, Repository};
 use json_structs as models;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Write;
 use std::rc::Rc;
 
 fn run() -> Result<(), Error> {
@@ -97,7 +95,7 @@ fn get_commit_msg(commit: &Commit) -> String {
 
 fn seconds_to_unix_time(sec: i64) -> String {
     use chrono::{NaiveDateTime, Utc};
-    
+
     let date: chrono::DateTime<Utc> =
         chrono::DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(sec, 0), Utc);
     date.to_rfc3339()
@@ -172,12 +170,12 @@ fn get_folder_name(repo: &git2::Repository) -> Option<String> {
 }
 
 fn write_to_file(json_obj: &String) -> Result<(), std::io::Error> {
+    use std::fs::File;
+    use std::io::Write;
+
     let mut file = File::create(consts::FILE_NAME)?;
-    let result = file.write_all(json_obj.as_bytes());
-    match result {
-        Ok(_) => Ok(()),
-        Err(err) => Err(err),
-    }
+    file.write_all(json_obj.as_bytes())?;
+    Ok(())
 }
 
 #[allow(dead_code)]
